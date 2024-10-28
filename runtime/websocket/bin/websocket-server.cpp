@@ -68,6 +68,7 @@ void WebSocketServer::do_decoder(const std::vector<char>& buffer,
                                  int audio_fs,
                                  std::string wav_format,
                                  FUNASR_DEC_HANDLE& decoder_handle,
+                                 FUNASR_SPK_HANDLE& spk_handle,  // Add spk_handle parameter
                                  std::string svs_lang,
                                  bool sys_itn) {
   try {
@@ -77,6 +78,7 @@ void WebSocketServer::do_decoder(const std::vector<char>& buffer,
       std::string asr_result="";
       std::string stamp_res="";
       std::string stamp_sents="";
+      std::string spk_result = "";  // Add speaker result
       try{
         FUNASR_RESULT Result = FunOfflineInferBuffer(
             asr_handle, buffer.data(), buffer.size(), RASR_NONE, nullptr, 
@@ -90,6 +92,20 @@ void WebSocketServer::do_decoder(const std::vector<char>& buffer,
         } else{
           std::this_thread::sleep_for(std::chrono::milliseconds(20));
           LOG(ERROR) << "FUNASR_RESULT is nullptr.";
+        }
+
+        // Get speaker diarization result
+        if (spk_handle != nullptr) {
+            FUNASR_RESULT SpkResult = FunSpkInferBuffer(
+                spk_handle,
+                buffer.data(),
+                buffer.size(),
+                audio_fs
+            );
+            if (SpkResult != nullptr) {
+                spk_result = FunASRGetResult(SpkResult, 0);
+                FunASRFreeResult(SpkResult);
+            }
         }
       }catch (std::exception const& e) {
         LOG(ERROR) << e.what();
@@ -114,6 +130,17 @@ void WebSocketServer::do_decoder(const std::vector<char>& buffer,
         }
       }
       jsonresult["wav_name"] = wav_name;
+
+      // Add speaker info to JSON result
+      if (!spk_result.empty()) {
+          try {
+              nlohmann::json spk_json = nlohmann::json::parse(spk_result);
+              jsonresult["speaker_diarization"] = spk_json;
+          } catch (std::exception const &e) {
+              LOG(ERROR) << e.what();
+              jsonresult["speaker_diarization"] = "";
+          }
+      }
 
       // send the json to client
       if (is_ssl) {
@@ -170,6 +197,11 @@ void WebSocketServer::on_open(websocketpp::connection_hdl hdl) {
   FUNASR_DEC_HANDLE decoder_handle =
     FunASRWfstDecoderInit(asr_handle, ASR_OFFLINE, global_beam_, lattice_beam_, am_scale_);
   data_msg->decoder_handle = decoder_handle;
+
+  // Initialize speaker diarization handle
+  FUNASR_SPK_HANDLE spk_handle = FunSpkInit(spk_model_path);
+  data_msg->spk_handle = spk_handle;
+
   data_map.emplace(hdl, data_msg);
   LOG(INFO) << "on_open, active connections: " << data_map.size();
 }
@@ -207,6 +239,10 @@ void remove_hdl(
     FunWfstDecoderUnloadHwsRes(data_msg->decoder_handle);
     FunASRWfstDecoderUninit(data_msg->decoder_handle);
     data_msg->decoder_handle = nullptr;
+    if (data_msg->spk_handle != nullptr) {
+      FunSpkUninit(data_msg->spk_handle);
+      data_msg->spk_handle = nullptr;
+    }
 	  data_map.erase(hdl);
     LOG(INFO) << "remove one connection";
   }

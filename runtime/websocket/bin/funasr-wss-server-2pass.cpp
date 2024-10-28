@@ -135,10 +135,11 @@ int main(int argc, char* argv[]) {
     TCLAP::ValueArg<std::int32_t> fst_inc_wts("", FST_INC_WTS, 
         "the fst hotwords incremental bias", false, 20, "int32_t");
 
-    // Add new constant for speaker model
-    #define SPK_DIR "spk-dir"
-
     // Add new command line argument for speaker model
+    // chinese damo/speech_campplus_sv_zh-cn_16k-common
+    // english damo/speech_campplus_sv_en_16k-common  
+    // multi damo/speech_xvector_sv-zh-cn-multisp-16k-common
+    #define SPK_DIR "spk-dir"
     TCLAP::ValueArg<std::string> spk_dir(
         "", SPK_DIR,
         "default: damo/speech_campplus_sv_zh-cn_16k-common, the speaker model path",
