@@ -27,3 +27,8 @@ GPT-SoVITS*
 modelscope_models
 examples/aishell/llm_asr_nar/*
 *egg-info
+
+runtime/websocket/bin/ffmpeg-master-latest-linux64-gpl-shared/*
+runtime/websocket/bin/onnxruntime-linux-x64-1.14.0/*
+runtime/websocket/third_party/*
+runtime/log.txt

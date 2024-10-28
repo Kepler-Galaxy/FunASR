@@ -135,6 +135,18 @@ int main(int argc, char* argv[]) {
     TCLAP::ValueArg<std::int32_t> fst_inc_wts("", FST_INC_WTS, 
         "the fst hotwords incremental bias", false, 20, "int32_t");
 
+    // Add new constant for speaker model
+    #define SPK_DIR "spk-dir"
+
+    // Add new command line argument for speaker model
+    TCLAP::ValueArg<std::string> spk_dir(
+        "", SPK_DIR,
+        "default: damo/speech_campplus_sv_zh-cn_16k-common, the speaker model path",
+        false, "damo/speech_campplus_sv_zh-cn_16k-common", "string");
+
+    TCLAP::ValueArg<std::string> spk_revision(
+        "", "spk-revision", "Speaker model revision", false, "v1.0.2", "string");
+
     // add file
     cmd.add(hotword);
     cmd.add(fst_inc_wts);
@@ -161,6 +173,8 @@ int main(int argc, char* argv[]) {
     cmd.add(itn_revision);
     cmd.add(lm_dir);
     cmd.add(lm_revision);
+    cmd.add(spk_dir);
+    cmd.add(spk_revision);
 
     cmd.add(listen_ip);
     cmd.add(port);
@@ -180,6 +194,8 @@ int main(int argc, char* argv[]) {
     GetValue(itn_dir, ITN_DIR, model_path);
     GetValue(lm_dir, LM_DIR, model_path);
     GetValue(hotword, HOTWORD, model_path);
+    GetValue(spk_dir, SPK_DIR, model_path);
+    GetValue(spk_revision, "spk-revision", model_path);
 
     GetValue(offline_model_revision, "offline-model-revision", model_path);
     GetValue(online_model_revision, "online-model-revision", model_path);
@@ -205,6 +221,7 @@ int main(int argc, char* argv[]) {
       std::string s_punc_quant = model_path[PUNC_QUANT];
       std::string s_itn_path = model_path[ITN_DIR];
       std::string s_lm_path = model_path[LM_DIR];
+      std::string s_spk_path = model_path[SPK_DIR];
 
       std::string python_cmd =
           "python -m funasr.download.runtime_sdk_download_tool --type onnx --quantize True ";
@@ -489,6 +506,45 @@ int main(int argc, char* argv[]) {
         }
       } else {
         LOG(INFO) << "ITN model is not set, use default.";
+      }
+
+      if (!s_spk_path.empty()) {
+          std::string python_cmd_spk;
+          std::string down_spk_path;
+          std::string down_spk_model;
+
+          if (access(s_spk_path.c_str(), F_OK) == 0) {
+              // local
+              python_cmd_spk = python_cmd + " --model-name " + s_spk_path +
+                              " --export-dir ./ " + " --model_revision " +
+                              model_path["spk-revision"];
+              down_spk_path = s_spk_path;
+          } else {
+              // modelscope
+              LOG(INFO) << "Download model: " << s_spk_path
+                        << " from modelscope : ";
+              python_cmd_spk = python_cmd + " --model-name " +
+                      s_spk_path +
+                      " --export-dir " + s_download_model_dir +
+                      " --model_revision " + model_path["spk-revision"];
+              down_spk_path = s_download_model_dir + "/" + s_spk_path;
+          }
+
+          int ret = system(python_cmd_spk.c_str());
+          if (ret != 0) {
+              LOG(INFO) << "Failed to download model from modelscope. If you set local speaker model path, you can ignore the errors.";
+          }
+          down_spk_model = down_spk_path + "/model.onnx";
+
+          if (access(down_spk_model.c_str(), F_OK) != 0) {
+              LOG(ERROR) << down_spk_model << " do not exists.";
+              exit(-1);
+          } else {
+              model_path[SPK_DIR] = down_spk_path;
+              LOG(INFO) << "Set " << SPK_DIR << " : " << model_path[SPK_DIR];
+          }
+      } else {
+          LOG(INFO) << "Speaker model is not set, use default.";
       }
 
     } catch (std::exception const& e) {
